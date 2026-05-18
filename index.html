@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>초능력 피구 추첨기</title>
+    
+    <!-- 폰트 및 아이콘 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Noto Sans KR"', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        
+        /* 3D 카드 뒤집기 애니메이션 관련 CSS */
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .card-inner { transition: transform 0.7s cubic-bezier(0.4, 0.2, 0.2, 1); }
+        
+        /* 부드러운 화면 전환 효과 */
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-20">
+
+    <!-- 상단 헤더 -->
+    <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center sticky top-0 z-10">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <i class="fas fa-fire text-orange-300 text-2xl"></i>
+            초능력 피구 추첨기
+        </h1>
+        <div id="header-buttons" class="flex gap-2 hidden">
+            <button onclick="app.setStep('result')" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1 transition">
+                <i class="fas fa-eye"></i> 현황판
+            </button>
+            <button onclick="app.resetApp()" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1 transition">
+                <i class="fas fa-undo"></i> 리셋
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 md:p-6 mt-4 relative">
+        
+        <!-- STEP 1: 명단 입력 -->
+        <div id="step-setup" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 fade-in">
+            <h2 class="text-2xl font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-users text-indigo-500"></i>
+                1단계: 학급 명단 설정
+            </h2>
+            <p class="text-slate-500 mb-6">학생 명렬표(CSV 파일)를 업로드하거나 학급을 선택하세요.</p>
+            
+            <div class="flex flex-col lg:flex-row gap-6 mb-6">
+                <!-- CSV 업로드 섹션 -->
+                <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex-1">
+                    <label class="block text-sm font-bold text-indigo-700 mb-2 flex items-center gap-2">
+                        <i class="fas fa-file-csv text-lg"></i> 명렬표(CSV) 불러오기
+                    </label>
+                    <p class="text-xs text-indigo-500 mb-3">나이스(NEIS)에서 다운로드한 CSV 파일(학년, 반, 성명 포함)을 올리면 자동으로 학급이 추가됩니다.</p>
+                    <input type="file" id="csv-upload" accept=".csv" class="block w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 cursor-pointer transition" onchange="app.handleCSVUpload(event)">
+                </div>
+            </div>
+
+            <!-- 프리셋 버튼 영역 -->
+            <label class="block text-sm font-bold text-slate-700 mb-2">학급 선택</label>
+            <div id="preset-buttons" class="mb-4 flex flex-wrap gap-2">
+                <!-- JS로 버튼 동적 생성 -->
+            </div>
+
+            <textarea id="students-textarea" class="w-full h-64 p-4 border rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none leading-relaxed" placeholder="여기에 학생 이름을 한 줄에 한 명씩 입력하세요."></textarea>
+            
+            <div class="mt-6 flex justify-end">
+                <button onclick="app.goToAttendanceTeam()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center gap-2">
+                    다음 단계로 <i class="fas fa-check"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- STEP 2: 출석 및 팀 가르기 -->
+        <div id="step-attendance-team" class="space-y-6 fade-in hidden">
+            <!-- 결석생 체크 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-xl font-bold mb-4 flex justify-between items-center flex-wrap gap-2">
+                    <span>체육시간 결석/조퇴생 제외</span>
+                    <span class="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">
+                        현재 참여 인원: <strong id="present-count-display">0명</strong>
+                    </span>
+                </h2>
+                <div id="attendance-list" class="flex flex-wrap gap-3">
+                    <!-- JS로 출석 버튼 동적 생성 -->
+                </div>
+            </div>
+
+            <!-- 팀 가르기 -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i class="fas fa-users-rays text-indigo-500"></i> 청백 팀 편성
+                    </h2>
+                    <button onclick="app.randomizeTeams()" class="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-bold shadow-sm transition flex items-center gap-2">
+                        <i class="fas fa-random"></i> 랜덤 팀 나누기
+                    </button>
+                </div>
+                <p class="text-sm text-slate-500 mb-4">학생들의 소속 팀을 확인하세요. <span class="font-bold text-slate-700">이름표를 클릭하면 팀을 바꿀 수 있습니다.</span></p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 청팀 -->
+                    <div class="border-2 border-blue-200 rounded-xl p-4 bg-blue-50">
+                        <h3 class="text-lg font-black text-blue-700 mb-3 border-b-2 border-blue-200 pb-2 text-center">🟦 청팀 (<span id="blue-team-count">0</span>명)</h3>
+                        <div id="blue-team-list" class="flex flex-wrap gap-2 justify-center min-h-[60px] content-start"></div>
+                    </div>
+                    <!-- 홍팀 -->
+                    <div class="border-2 border-red-200 rounded-xl p-4 bg-red-50">
+                        <h3 class="text-lg font-black text-red-700 mb-3 border-b-2 border-red-200 pb-2 text-center">🟥 홍팀 (<span id="red-team-count">0</span>명)</h3>
+                        <div id="red-team-list" class="flex flex-wrap gap-2 justify-center min-h-[60px] content-start"></div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-between items-center">
+                    <button onclick="app.setStep('setup')" class="text-slate-500 hover:text-slate-700 font-semibold underline text-sm">명단 수정으로 돌아가기</button>
+                    <button onclick="app.goToRoles()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center gap-2">
+                        역할 배분 단계로 <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3: 역할 수 설정 -->
+        <div id="step-roles" class="space-y-6 fade-in hidden">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-4">
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i class="fas fa-star text-yellow-500"></i> 초능력 카드 수량 분배 (팀당 기준)
+                    </h2>
+                    <div class="flex flex-wrap items-center gap-2 text-sm">
+                        <button onclick="app.fillRemainingWithNormal()" class="bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition font-semibold shadow-sm">
+                            남은 인원 '일반인' 채우기
+                        </button>
+                        <div id="allocation-status" class="px-4 py-2 rounded-lg font-bold border-2 bg-red-50 text-red-600 border-red-300">
+                            할당: 0 / 0 (팀당)
+                        </div>
+                    </div>
+                </div>
+                <!-- 사용자 요청에 따른 안내문구 추가 -->
+                <p class="text-sm text-slate-500 mb-6 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    💡 인원이 <strong>더 많은 팀</strong>을 기준으로 세팅해주세요. 인원이 1~2명 적은 팀은 배정 과정에서 <strong>'일반인' 또는 '중복된 특수 역할'이 자동으로 조절</strong>되어 공평하게 세팅됩니다.
+                </p>
+
+                <div id="role-counters" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- JS로 역할 카운터 동적 생성 -->
+                </div>
+
+                <div class="mt-10 flex flex-col items-center gap-4">
+                    <button id="btn-start-draw" onclick="app.startDrawing()" class="px-10 py-5 rounded-full font-bold text-2xl shadow-lg flex items-center gap-3 transition transform bg-slate-300 text-slate-500 cursor-pointer">
+                        <i class="fas fa-play-circle"></i> 추첨 시작하기
+                    </button>
+                    <button onclick="app.setStep('attendance-team')" class="text-slate-500 underline text-sm hover:text-slate-700">팀 편성 단계로 돌아가기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 4: 뽑기 화면 -->
+        <div id="step-draw" class="fade-in hidden">
+            
+            <div id="draw-completion-msg" class="bg-white rounded-2xl p-10 text-center shadow-md border border-slate-200 hidden">
+                <h2 class="text-3xl font-bold text-indigo-600 mb-4">🎉 모든 추첨이 완료되었습니다!</h2>
+                <p class="text-slate-500 mb-8">이제 현황판을 통해 결과를 확인하고 피구 게임을 시작하세요.</p>
+                <button onclick="app.setStep('result')" class="bg-indigo-600 text-white px-8 py-3 rounded-full font-bold shadow hover:bg-indigo-700 transition">
+                    결과 현황판 보기
+                </button>
+            </div>
+
+            <div id="draw-grid-container" class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
+                <h2 class="text-xl font-bold mb-6 text-center text-slate-700">자기 이름을 눌러 역할을 확인하세요!</h2>
+                <div id="draw-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <!-- JS로 뽑기 버튼 동적 생성 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 5: 결과 현황판 -->
+        <div id="step-result" class="bg-white rounded-2xl shadow-md border border-slate-200 p-6 fade-in hidden">
+            <div class="flex justify-between items-end mb-6 border-b pb-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fas fa-eye text-indigo-500"></i> 각 팀 라인업 현황
+                    </h2>
+                    <p id="result-status-text" class="text-slate-500 text-sm mt-1">참여 인원: 0명 / 뽑기 완료: 0명</p>
+                </div>
+                <button onclick="app.setStep('draw')" class="text-indigo-600 bg-indigo-50 px-4 py-2 rounded-lg font-semibold hover:bg-indigo-100 transition">
+                    뽑기 화면으로 가기
+                </button>
+            </div>
+
+            <!-- 청/홍팀 결과 2분할 뷰 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 청팀 결과 -->
+                <div class="border-2 border-blue-200 rounded-xl p-5 bg-blue-50/50">
+                    <h3 class="text-2xl font-black text-blue-700 mb-5 text-center flex items-center justify-center gap-2"><i class="fas fa-flag"></i> 청팀 라인업</h3>
+                    <div id="result-blue-team" class="space-y-4">
+                        <!-- JS로 동적 생성 -->
+                    </div>
+                </div>
+
+                <!-- 홍팀 결과 -->
+                <div class="border-2 border-red-200 rounded-xl p-5 bg-red-50/50">
+                    <h3 class="text-2xl font-black text-red-700 mb-5 text-center flex items-center justify-center gap-2"><i class="fas fa-flag"></i> 홍팀 라인업</h3>
+                    <div id="result-red-team" class="space-y-4">
+                        <!-- JS로 동적 생성 -->
+                    </div>
+                </div>
+            </div>
+            
+            <div id="undrawn-students-container" class="mt-8 p-4 bg-orange-50 border border-orange-200 rounded-xl hidden">
+                <h4 class="text-orange-800 font-bold mb-2">아직 뽑지 않은 학생</h4>
+                <p id="undrawn-students-list" class="text-sm text-orange-600"></p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 모달: 카드 애니메이션 -->
+    <div id="card-modal" class="fixed inset-0 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 hidden opacity-0 transition-opacity duration-300">
+        <h3 class="text-3xl font-bold text-white mb-8 text-center drop-shadow-md">
+            <span id="modal-team-badge" class="px-3 py-1 rounded-full text-sm font-black mr-2 align-middle">팀</span>
+            <span id="modal-student-name" class="text-yellow-300 drop-shadow">OOO</span> 학생의 운명은?
+        </h3>
+        
+        <!-- 카드 영역 -->
+        <div class="w-64 h-96 relative perspective-1000 cursor-pointer group" onclick="app.revealCard()">
+            <div id="flip-card-inner" class="w-full h-full transform-style-3d card-inner relative">
+                
+                <!-- 카드 뒷면 (안까짐) -->
+                <div id="flip-card-back" class="absolute w-full h-full backface-hidden rounded-2xl border-4 border-yellow-400 shadow-2xl flex flex-col items-center justify-center">
+                    <i class="fas fa-hand-sparkles text-yellow-400/70 text-7xl mb-6 animate-pulse drop-shadow-md"></i>
+                    <p class="text-yellow-400 font-bold text-xl tracking-widest drop-shadow-md">TAP TO OPEN</p>
+                </div>
+
+                <!-- 카드 앞면 (까짐) -->
+                <div id="flip-card-front" class="absolute w-full h-full backface-hidden rotate-y-180 rounded-2xl border-4 shadow-2xl p-6 flex flex-col items-center justify-center text-center">
+                    <div class="bg-white/30 w-24 h-24 rounded-full flex items-center justify-center mb-4 backdrop-blur-sm shadow-inner">
+                        <i id="modal-role-icon" class="text-5xl"></i>
+                    </div>
+                    <h2 id="modal-role-name" class="text-4xl font-black mb-3 text-white drop-shadow-lg tracking-tight">역할명</h2>
+                    <p id="modal-role-desc" class="text-white/95 font-medium leading-tight px-3 py-3 text-sm bg-black/30 rounded-xl shadow-inner break-keep">
+                        설명
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 하단 버튼 영역 -->
+        <div class="mt-10 h-16 flex items-center justify-center">
+            <button id="modal-btn-close" onclick="app.closeCard(event)" class="bg-yellow-400 text-yellow-900 px-8 py-3 rounded-full font-bold text-lg shadow-xl hover:bg-yellow-300 hover:scale-105 active:scale-95 transition transform hidden">
+                확인 완료
+            </button>
+            <p id="modal-guide-text" class="text-white font-bold text-lg animate-pulse drop-shadow-md">카드를 터치하여 뒤집어주세요</p>
+        </div>
+    </div>
+
+    <!-- 핵심 로직 (Vanilla JS) -->
+    <script>
+        const PRESET_CLASSES = {
+            "직접 입력": []
+        };
+
+        const ROLES_INFO = {
+            "몸빵": { icon: "fas fa-shield-alt", color: "bg-yellow-400", borderColor:"border-yellow-300", textColor: "text-yellow-900", desc: "무제한. 맞혀도 죽지 않으며 팀원을 보호할 수 있음. 직접 공격은 불가." },
+            "거북": { icon: "fas fa-user-shield", color: "bg-green-500", borderColor:"border-green-400", textColor: "text-white", desc: "무제한. 등에 맞으면 죽지 않음." },
+            "얼음": { icon: "fas fa-snowflake", color: "bg-blue-400", borderColor:"border-blue-300", textColor: "text-white", desc: "1회용. '얼음!' 외치면 상대편이 10초간 움직이지 못함." },
+            "돌격": { icon: "fas fa-hand-fist", color: "bg-red-500", borderColor:"border-red-400", textColor: "text-white", desc: "1회용. 10초 동안 상대 코트로 넘어가 공격 가능." },
+            "천사": { icon: "fas fa-heart", color: "bg-pink-400", borderColor:"border-pink-300", textColor: "text-white", desc: "1회용. 죽은 친구 1명 부활 가능." },
+            "불사조": { icon: "fas fa-fire", color: "bg-orange-500", borderColor:"border-orange-400", textColor: "text-white", desc: "패시브. 목숨이 2개! 한 번 죽어도 바로 살아남." },
+            "반사": { icon: "fas fa-sync-alt", color: "bg-purple-500", borderColor:"border-purple-400", textColor: "text-white", desc: "1회용. 나를 맞힌 상대방이 대신 아웃됨." },
+            "좀비": { icon: "fas fa-ghost", color: "bg-emerald-600", borderColor:"border-emerald-500", textColor: "text-white", desc: "1회용. 죽으면 상대 진영으로 가 1명을 터치로 아웃시킴." },
+            "일반인": { icon: "fas fa-user", color: "bg-slate-400", borderColor:"border-slate-300", textColor: "text-white", desc: "아무 능력이 없는 훌륭한 피구 선수!" }
+        };
+
+        const app = {
+            step: 'setup',
+            selectedClass: "직접 입력",
+            attendance: [], // { name: string, present: boolean, team: '청팀' | '홍팀' | null }
+            roleCounts: {},
+            drawPools: { '청팀': [], '홍팀': [] }, // 팀별 독립된 카드 덱 풀
+            drawnResults: {}, 
+            activeStudent: null,
+            cardRevealed: false,
+
+            init() {
+                Object.keys(ROLES_INFO).forEach(role => this.roleCounts[role] = 0);
+                this.renderPresetButtons();
+                document.getElementById('students-textarea').addEventListener('input', () => {
+                    this.updatePresetButtons("직접 입력");
+                });
+                this.updateView();
+            },
+
+            renderPresetButtons() {
+                const presetContainer = document.getElementById('preset-buttons');
+                presetContainer.innerHTML = Object.keys(PRESET_CLASSES).map((cls, idx) => `
+                    <button onclick="app.selectPreset('${cls}')" id="preset-${idx}" class="preset-btn px-4 py-2 rounded-full font-medium transition ${this.selectedClass === cls ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                        ${cls}
+                    </button>
+                `).join('');
+            },
+
+            selectPreset(cls) {
+                this.selectedClass = cls;
+                const textarea = document.getElementById('students-textarea');
+                
+                if (cls !== "직접 입력") {
+                    textarea.value = PRESET_CLASSES[cls].join("\n");
+                }
+                this.updatePresetButtons(cls);
+            },
+
+            updatePresetButtons(activeCls) {
+                this.selectedClass = activeCls;
+                const buttons = document.querySelectorAll('.preset-btn');
+                const classKeys = Object.keys(PRESET_CLASSES);
+                
+                buttons.forEach((btn, idx) => {
+                    if (classKeys[idx] === activeCls) {
+                        btn.className = "preset-btn px-4 py-2 rounded-full font-medium transition bg-indigo-600 text-white shadow-md";
+                    } else {
+                        btn.className = "preset-btn px-4 py-2 rounded-full font-medium transition bg-slate-100 text-slate-600 hover:bg-slate-200";
+                    }
+                });
+            },
+
+            handleCSVUpload(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.readAsArrayBuffer(file);
+                reader.onload = (e) => {
+                    const buffer = e.target.result;
+                    let text = "";
+                    try {
+                        const decoder = new TextDecoder("utf-8", { fatal: true });
+                        text = decoder.decode(buffer);
+                    } catch (err) {
+                        const decoder = new TextDecoder("euc-kr");
+                        text = decoder.decode(buffer);
+                    }
+
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    if (lines.length < 2) {
+                        alert("데이터가 없거나 형식이 잘못되었습니다.");
+                        return;
+                    }
+
+                    const headers = lines[0].split(',').map(h => h.replace(/['"]/g, '').trim());
+                    const gradeIdx = headers.findIndex(h => h.includes('학년'));
+                    const classIdx = headers.findIndex(h => h.includes('반'));
+                    const nameIdx = headers.findIndex(h => h.includes('성명') || h.includes('이름'));
+
+                    if (gradeIdx === -1 || classIdx === -1 || nameIdx === -1) {
+                        alert('CSV 형식 오류: 첫 줄에 "학년", "반", "성명" 또는 "이름" 열이 반드시 포함되어 있어야 합니다.\n\n발견된 열: ' + headers.join(", "));
+                        return;
+                    }
+
+                    let importedCount = 0;
+                    let newClasses = new Set();
+
+                    for (let i = 1; i < lines.length; i++) {
+                        const cols = lines[i].split(',');
+                        if (cols.length <= Math.max(gradeIdx, classIdx, nameIdx)) continue;
+                        
+                        const grade = cols[gradeIdx].replace(/['"]/g, '').trim();
+                        const cls = cols[classIdx].replace(/['"]/g, '').trim();
+                        const name = cols[nameIdx].replace(/['"]/g, '').trim();
+
+                        if (!grade || !cls || !name) continue;
+
+                        const className = `${grade}학년 ${cls}반`;
+                        if (!PRESET_CLASSES[className]) {
+                            PRESET_CLASSES[className] = [];
+                        }
+                        
+                        if (!PRESET_CLASSES[className].includes(name)) {
+                            PRESET_CLASSES[className].push(name);
+                            importedCount++;
+                        }
+                        newClasses.add(className);
+                    }
+
+                    if (importedCount > 0) {
+                        this.renderPresetButtons();
+                        this.selectPreset(Array.from(newClasses)[0]);
+                        alert(`성공적으로 ${importedCount}명의 학생 명단을 추가했습니다!\n학급을 선택해주세요.`);
+                    } else {
+                        alert("새로 추가된 학생이 없거나 데이터 형식을 확인해주세요.");
+                    }
+                    event.target.value = ''; 
+                };
+            },
+
+            // 1단계 -> 2단계(팀 편성) 이동
+            goToAttendanceTeam() {
+                const text = document.getElementById('students-textarea').value;
+                const list = text.split("\n").map(s => s.trim()).filter(s => s !== "");
+                
+                if (list.length === 0) {
+                    alert("학생 명단을 입력해주세요.");
+                    return;
+                }
+
+                // 초기 설정: 모두 출석, 팀은 null
+                this.attendance = list.map(name => ({ name, present: true, team: null }));
+                
+                // 자동으로 팀 섞기
+                this.randomizeTeams();
+                this.setStep('attendance-team');
+            },
+
+            // 랜덤 청백팀 나누기 로직
+            randomizeTeams() {
+                const presentStudents = this.attendance.filter(s => s.present);
+                
+                // Fisher-Yates Shuffle
+                for (let i = presentStudents.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [presentStudents[i], presentStudents[j]] = [presentStudents[j], presentStudents[i]];
+                }
+
+                const half = Math.ceil(presentStudents.length / 2);
+                presentStudents.forEach((s, index) => {
+                    s.team = index < half ? '청팀' : '홍팀';
+                });
+
+                this.renderAttendanceTeamView();
+            },
+
+            // 학생 개별 팀 수동 변경
+            toggleTeam(name) {
+                const student = this.attendance.find(s => s.name === name);
+                if(student && student.present) {
+                    student.team = student.team === '청팀' ? '홍팀' : '청팀';
+                    this.renderAttendanceTeamView();
+                }
+            },
+
+            // 출석 토글 (결석 시 팀에서도 제거)
+            toggleAttendance(index) {
+                const s = this.attendance[index];
+                s.present = !s.present;
+                
+                if (!s.present) {
+                    s.team = null;
+                } else {
+                    // 출석으로 바뀔 때 인원이 더 적은 팀에 자동 배정
+                    const blueCount = this.attendance.filter(x => x.team === '청팀').length;
+                    const redCount = this.attendance.filter(x => x.team === '홍팀').length;
+                    s.team = blueCount <= redCount ? '청팀' : '홍팀';
+                }
+                
+                this.renderAttendanceTeamView();
+            },
+
+            // 2단계 -> 3단계(역할 설정) 이동
+            goToRoles() {
+                // 팀이 할당되지 않은 출석 학생이 있는지 확인
+                const unassigned = this.attendance.filter(s => s.present && !s.team);
+                if (unassigned.length > 0) {
+                    this.randomizeTeams(); // 안전망
+                }
+                this.setStep('roles');
+            },
+
+            updateRoleCount(role, delta) {
+                const current = this.roleCounts[role];
+                if (current + delta < 0) return;
+                this.roleCounts[role] = current + delta;
+                this.renderRolesView();
+            },
+
+            // 팀 인원수 중 최대값을 반환하는 유틸 함수
+            getMaxTeamSize() {
+                const blueCount = this.attendance.filter(s => s.present && s.team === '청팀').length;
+                const redCount = this.attendance.filter(s => s.present && s.team === '홍팀').length;
+                return Math.max(blueCount, redCount);
+            },
+
+            fillRemainingWithNormal() {
+                const maxCount = this.getMaxTeamSize();
+                let allocatedWithoutNormal = 0;
+                
+                Object.entries(this.roleCounts).forEach(([role, count]) => {
+                    if (role !== "일반인") allocatedWithoutNormal += count;
+                });
+
+                if (maxCount >= allocatedWithoutNormal) {
+                    this.roleCounts["일반인"] = maxCount - allocatedWithoutNormal;
+                    this.renderRolesView();
+                } else {
+                    alert("이미 팀당 최대 인원보다 많은 능력이 분배되었습니다.");
+                }
+            },
+
+            // [핵심 로직] 각 팀 인원에 맞춰 역할 수 조절 및 덱(Pool) 생성
+            startDrawing() {
+                const blueStudents = this.attendance.filter(s => s.present && s.team === '청팀');
+                const redStudents = this.attendance.filter(s => s.present && s.team === '홍팀');
+                const maxSize = Math.max(blueStudents.length, redStudents.length);
+                const allocated = Object.values(this.roleCounts).reduce((a, b) => a + b, 0);
+
+                if (allocated !== maxSize) {
+                    alert(`⚠️ 역할 할당 개수 오류!\n\n팀당 기준 인원(${maxSize}명)과 설정된 역할 수(${allocated}개)가 일치해야 합니다.\n💡 [남은 인원 '일반인' 채우기] 버튼을 눌러주세요.`);
+                    return;
+                }
+
+                // 타겟 인원수(팀별 실제 인원)에 맞게 덱을 생성하는 내부 함수
+                const createTeamPool = (targetSize) => {
+                    let poolCounts = { ...this.roleCounts }; // Base 복사
+                    let currentSize = allocated;
+
+                    // 인원이 적어 삭감이 필요한 경우
+                    while (currentSize > targetSize) {
+                        if (poolCounts["일반인"] > 0) {
+                            // 1순위: 일반인을 먼저 삭감
+                            poolCounts["일반인"]--;
+                        } else {
+                            // 2순위: 일반인이 없다면 2개 이상 중복 배정된 역할 중 삭감
+                            let reduced = false;
+                            for (let r in poolCounts) {
+                                if (poolCounts[r] >= 2) {
+                                    poolCounts[r]--;
+                                    reduced = true;
+                                    break;
+                                }
+                            }
+                            // 3순위: 중복된 역할도 없다면 아무거나 1개 이상인 역할 삭감
+                            if (!reduced) {
+                                for (let r in poolCounts) {
+                                    if (poolCounts[r] > 0) {
+                                        poolCounts[r]--;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        currentSize--;
+                    }
+
+                    // 카운트를 실제 배열(덱)로 변환
+                    let pool = [];
+                    Object.entries(poolCounts).forEach(([role, count]) => {
+                        for (let i = 0; i < count; i++) pool.push(role);
+                    });
+
+                    // 덱 셔플(Fisher-Yates)
+                    for (let i = pool.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [pool[i], pool[j]] = [pool[j], pool[i]];
+                    }
+                    return pool;
+                };
+
+                // 청/홍팀 각각 맞춤형 덱 생성 후 저장
+                this.drawPools = {
+                    '청팀': createTeamPool(blueStudents.length),
+                    '홍팀': createTeamPool(redStudents.length)
+                };
+
+                this.drawnResults = {};
+                this.setStep('draw');
+            },
+
+            openCardModal(name) {
+                if (this.drawnResults[name]) return; 
+                this.activeStudent = name;
+                this.cardRevealed = false;
+                
+                const student = this.attendance.find(s => s.name === name);
+                const isBlue = student.team === '청팀';
+
+                // 모달 배경색 팀에 맞게 변경
+                const modalEl = document.getElementById('card-modal');
+                modalEl.className = `fixed inset-0 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 hidden opacity-0 transition-opacity duration-300 ${isBlue ? 'bg-blue-900/90' : 'bg-red-900/90'}`;
+
+                // 배지 세팅
+                const badgeEl = document.getElementById('modal-team-badge');
+                badgeEl.innerText = student.team;
+                badgeEl.className = `px-3 py-1 rounded-full text-sm font-black mr-2 align-middle ${isBlue ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'}`;
+
+                // 뒷면 카드 색상 세팅
+                const backEl = document.getElementById('flip-card-back');
+                backEl.className = `absolute w-full h-full backface-hidden rounded-2xl border-4 border-yellow-400 shadow-2xl flex flex-col items-center justify-center ${isBlue ? 'bg-gradient-to-br from-blue-500 to-indigo-800' : 'bg-gradient-to-br from-red-500 to-rose-800'}`;
+
+                document.getElementById('modal-student-name').innerText = name;
+                document.getElementById('flip-card-inner').classList.remove('rotate-y-180');
+                document.getElementById('modal-btn-close').classList.add('hidden');
+                document.getElementById('modal-guide-text').classList.remove('hidden');
+
+                modalEl.classList.remove('hidden');
+                setTimeout(() => modalEl.classList.remove('opacity-0'), 10);
+            },
+
+            revealCard() {
+                if (this.cardRevealed) return; 
+
+                const student = this.attendance.find(s => s.name === this.activeStudent);
+                const team = student.team;
+
+                // 해당 학생이 속한 팀의 전용 덱에서 역할을 뽑아냄
+                const role = this.drawPools[team][0];
+                this.drawnResults[this.activeStudent] = role;
+                this.drawPools[team].shift(); // 뽑은 카드는 덱에서 삭제
+                
+                this.cardRevealed = true;
+
+                const info = ROLES_INFO[role];
+                const frontEl = document.getElementById('flip-card-front');
+                
+                frontEl.className = `absolute w-full h-full backface-hidden rotate-y-180 rounded-2xl border-4 shadow-2xl p-6 flex flex-col items-center justify-center text-center ${info.color} ${info.borderColor}`;
+                document.getElementById('modal-role-icon').className = `${info.icon} ${info.textColor}`;
+                document.getElementById('modal-role-name').innerText = role;
+                document.getElementById('modal-role-desc').innerText = info.desc;
+
+                document.getElementById('flip-card-inner').classList.add('rotate-y-180');
+                
+                document.getElementById('modal-guide-text').classList.add('hidden');
+                setTimeout(() => {
+                    document.getElementById('modal-btn-close').classList.remove('hidden');
+                }, 500);
+            },
+
+            closeCard(event) {
+                if (event) event.stopPropagation(); 
+                
+                const modal = document.getElementById('card-modal');
+                modal.classList.add('opacity-0');
+                setTimeout(() => {
+                    modal.classList.add('hidden');
+                    this.activeStudent = null;
+                    this.renderDrawView();
+                }, 300);
+            },
+
+            resetApp() {
+                if(confirm("모든 설정과 결과를 초기화하시겠습니까?")) {
+                    this.drawnResults = {};
+                    this.drawPools = { '청팀': [], '홍팀': [] };
+                    this.setStep('setup');
+                }
+            },
+
+            setStep(newStep) {
+                this.step = newStep;
+                this.updateView();
+            },
+
+            updateView() {
+                document.getElementById('step-setup').classList.add('hidden');
+                document.getElementById('step-attendance-team').classList.add('hidden');
+                document.getElementById('step-roles').classList.add('hidden');
+                document.getElementById('step-draw').classList.add('hidden');
+                document.getElementById('step-result').classList.add('hidden');
+                
+                const headerBtns = document.getElementById('header-buttons');
+                
+                if (this.step === 'draw' || this.step === 'result') {
+                    headerBtns.classList.remove('hidden');
+                } else {
+                    headerBtns.classList.add('hidden');
+                }
+
+                document.getElementById(`step-${this.step}`).classList.remove('hidden');
+
+                if (this.step === 'attendance-team') {
+                    this.renderAttendanceTeamView();
+                } else if (this.step === 'roles') {
+                    this.renderRolesView();
+                } else if (this.step === 'draw') {
+                    this.renderDrawView();
+                } else if (this.step === 'result') {
+                    this.renderResultView();
+                }
+            },
+
+            // 출석 & 팀 렌더링
+            renderAttendanceTeamView() {
+                const presentCount = this.attendance.filter(s => s.present).length;
+                document.getElementById('present-count-display').innerText = `${presentCount}명`;
+
+                // 출석 리스트 렌더링
+                const listContainer = document.getElementById('attendance-list');
+                listContainer.innerHTML = this.attendance.map((student, idx) => {
+                    const baseClass = "cursor-pointer px-4 py-2 rounded-xl border-2 flex items-center gap-2 transition select-none";
+                    const activeClass = student.present ? "border-indigo-500 bg-indigo-50 text-indigo-900" : "border-slate-200 bg-slate-50 text-slate-400 line-through";
+                    const boxClass = student.present ? "bg-indigo-500" : "bg-slate-200";
+                    const icon = student.present ? '<i class="fas fa-check text-white text-xs"></i>' : '';
+
+                    return `
+                        <div onclick="app.toggleAttendance(${idx})" class="${baseClass} ${activeClass}">
+                            <div class="w-4 h-4 rounded shadow-inner flex items-center justify-center ${boxClass}">
+                                ${icon}
+                            </div>
+                            <span class="font-semibold">${student.name}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                // 팀 리스트 렌더링
+                const blueTeam = this.attendance.filter(s => s.present && s.team === '청팀');
+                const redTeam = this.attendance.filter(s => s.present && s.team === '홍팀');
+
+                document.getElementById('blue-team-count').innerText = blueTeam.length;
+                document.getElementById('red-team-count').innerText = redTeam.length;
+
+                const renderTeamMember = (s, colorClass) => `
+                    <div onclick="app.toggleTeam('${s.name}')" class="cursor-pointer ${colorClass} px-3 py-1.5 rounded-full text-sm font-bold shadow-sm hover:scale-105 hover:shadow transition border">
+                        ${s.name} <i class="fas fa-exchange-alt text-xs ml-1 opacity-50"></i>
+                    </div>
+                `;
+
+                document.getElementById('blue-team-list').innerHTML = blueTeam.map(s => renderTeamMember(s, 'bg-white text-blue-700 border-blue-200 hover:bg-blue-100')).join('');
+                document.getElementById('red-team-list').innerHTML = redTeam.map(s => renderTeamMember(s, 'bg-white text-red-700 border-red-200 hover:bg-red-100')).join('');
+            },
+
+            // 역할 설정 뷰 렌더링
+            renderRolesView() {
+                this.renderRoleCounters();
+                
+                const maxCount = this.getMaxTeamSize();
+                const allocated = Object.values(this.roleCounts).reduce((a, b) => a + b, 0);
+                
+                const statusEl = document.getElementById('allocation-status');
+                const btnStart = document.getElementById('btn-start-draw');
+
+                statusEl.innerText = `할당: ${allocated} / ${maxCount} (팀당)`;
+
+                if (allocated === maxCount && maxCount > 0) {
+                    statusEl.className = "px-4 py-2 rounded-lg font-bold border-2 bg-green-100 text-green-700 border-green-500";
+                    btnStart.className = "px-10 py-5 rounded-full font-bold text-2xl shadow-xl flex items-center gap-3 transition transform bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:scale-105 hover:shadow-2xl cursor-pointer animate-pulse";
+                } else {
+                    statusEl.className = "px-4 py-2 rounded-lg font-bold border-2 bg-red-50 text-red-600 border-red-300";
+                    btnStart.className = "px-10 py-5 rounded-full font-bold text-2xl shadow-lg flex items-center gap-3 transition transform bg-slate-300 text-slate-600 cursor-pointer hover:bg-slate-400";
+                }
+            },
+
+            renderRoleCounters() {
+                const container = document.getElementById('role-counters');
+                container.innerHTML = Object.entries(ROLES_INFO).map(([role, info]) => `
+                    <div class="flex items-center justify-between p-3 border rounded-xl hover:shadow-md transition bg-slate-50">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${info.color} shadow-sm">
+                                <i class="${info.icon} text-white"></i>
+                            </div>
+                            <div>
+                                <div class="font-bold text-slate-800">${role}</div>
+                                <div class="text-xs text-slate-500 line-clamp-1 w-32 sm:w-40" title="${info.desc}">${info.desc}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 bg-white p-1 rounded-lg border shadow-sm">
+                            <button onclick="app.updateRoleCount('${role}', -1)" class="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-lg font-bold text-slate-600 active:scale-95 transition">-</button>
+                            <span class="w-6 text-center font-bold text-lg">${this.roleCounts[role]}</span>
+                            <button onclick="app.updateRoleCount('${role}', 1)" class="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-lg font-bold text-slate-600 active:scale-95 transition">+</button>
+                        </div>
+                    </div>
+                `).join('');
+            },
+
+            // 뽑기 뷰 렌더링 (팀별 색상 반영)
+            renderDrawView() {
+                const presentStudents = this.attendance.filter(s => s.present);
+                const isAllDrawn = presentStudents.length > 0 && presentStudents.every(s => this.drawnResults[s.name]);
+
+                const msgEl = document.getElementById('draw-completion-msg');
+                const gridEl = document.getElementById('draw-grid-container');
+
+                if (isAllDrawn) {
+                    msgEl.classList.remove('hidden');
+                    gridEl.classList.add('hidden');
+                } else {
+                    msgEl.classList.add('hidden');
+                    gridEl.classList.remove('hidden');
+
+                    const container = document.getElementById('draw-grid');
+                    container.innerHTML = presentStudents.map(student => {
+                        const name = student.name;
+                        const hasDrawn = !!this.drawnResults[name];
+                        const isBlue = student.team === '청팀';
+                        
+                        let btnClass = "";
+                        if (hasDrawn) {
+                            btnClass = "bg-slate-100 text-slate-400 border-2 border-dashed border-slate-200 scale-95 opacity-70 cursor-default";
+                        } else {
+                            if (isBlue) {
+                                btnClass = "bg-gradient-to-br from-blue-50 to-blue-100 text-blue-900 border border-blue-300 shadow hover:shadow-md hover:-translate-y-1 active:translate-y-0 cursor-pointer";
+                            } else {
+                                btnClass = "bg-gradient-to-br from-red-50 to-red-100 text-red-900 border border-red-300 shadow hover:shadow-md hover:-translate-y-1 active:translate-y-0 cursor-pointer";
+                            }
+                        }
+
+                        const iconHtml = hasDrawn ? `<i class="fas fa-check block mx-auto mt-1 opacity-50"></i>` : `<span class="text-xs opacity-60 block mt-1">${student.team}</span>`;
+
+                        return `
+                            <div onclick="app.openCardModal('${name}')" class="py-3 rounded-xl font-bold text-lg text-center transition-all transform select-none ${btnClass}">
+                                ${name}
+                                ${iconHtml}
+                            </div>
+                        `;
+                    }).join('');
+                }
+            },
+
+            // 결과 뷰 렌더링 (청팀/홍팀 분리)
+            renderResultView() {
+                const presentStudents = this.attendance.filter(s => s.present);
+                const drawnCount = Object.keys(this.drawnResults).length;
+                
+                document.getElementById('result-status-text').innerText = `참여 인원: ${presentStudents.length}명 / 뽑기 완료: ${drawnCount}명`;
+
+                // 팀별 라인업 생성 함수
+                const generateTeamHTML = (teamName) => {
+                    let teamHtml = '';
+                    const teamMembers = presentStudents.filter(s => s.team === teamName);
+
+                    Object.keys(ROLES_INFO).forEach(role => {
+                        const assignedStudents = teamMembers
+                            .filter(s => this.drawnResults[s.name] === role)
+                            .map(s => s.name);
+                        
+                        if (assignedStudents.length === 0) return; // 팀 라인업이므로 뽑은 사람이 있을 때만 보여줌
+
+                        const info = ROLES_INFO[role];
+                        const studentsHtml = assignedStudents.map(name => `<span class="bg-white border shadow-sm px-3 py-1 rounded-full text-slate-700 font-bold text-sm">${name}</span>`).join('');
+
+                        teamHtml += `
+                            <div class="border border-slate-200 rounded-lg overflow-hidden shadow-sm bg-white">
+                                <div class="${info.color} px-3 py-1.5 flex justify-between items-center">
+                                    <h4 class="text-white font-bold text-sm flex items-center gap-1 drop-shadow-sm">
+                                        <i class="${info.icon}"></i> ${role}
+                                    </h4>
+                                    <span class="bg-white/30 text-white px-2 py-0.5 rounded text-xs font-bold shadow-inner">
+                                        ${assignedStudents.length}명
+                                    </span>
+                                </div>
+                                <div class="p-2 bg-slate-50 min-h-[3rem] flex flex-wrap gap-2 items-center">
+                                    ${studentsHtml}
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    if (teamHtml === '') {
+                        teamHtml = `<p class="text-slate-400 text-sm italic text-center py-6 bg-white rounded-lg border">아직 역할을 뽑은 학생이 없습니다.</p>`;
+                    }
+
+                    return teamHtml;
+                };
+
+                document.getElementById('result-blue-team').innerHTML = generateTeamHTML('청팀');
+                document.getElementById('result-red-team').innerHTML = generateTeamHTML('홍팀');
+
+                // 아직 안 뽑은 학생 표시
+                const undrawnContainer = document.getElementById('undrawn-students-container');
+                if (presentStudents.length > drawnCount) {
+                    const undrawnList = presentStudents.filter(s => !this.drawnResults[s.name]).map(s => s.name);
+                    document.getElementById('undrawn-students-list').innerText = undrawnList.join(", ");
+                    undrawnContainer.classList.remove('hidden');
+                } else {
+                    undrawnContainer.classList.add('hidden');
+                }
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            window.app = app;
+            app.init();
+        });
+
+    </script>
+</body>
+</html>
